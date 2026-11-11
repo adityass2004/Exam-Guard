@@ -1,0 +1,23 @@
+{
+  "name": "examguard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ExamGuard: Multi-Modal AI Exam Proctoring & Biometric Verification System",
+  "scripts": {
+    "setup": "npm --prefix main run setup",
+    "run:all": "npm --prefix main run run:all",
+    "dev:all": "npm --prefix main run run:all",
+    "dev": "npm --prefix main run dev",
+    "dev:web": "npm --prefix main run dev:web",
+    "dev:api": "npm --prefix main run dev:api",
+    "dev:vision": "npm --prefix main run dev:vision",
+    "build": "npm --prefix main run build",
+    "test": "npm --prefix main run test",
+    "typecheck": "npm --prefix main run typecheck",
+    "lint": "npm --prefix main run lint",
+    "db:reset": "npm --prefix main run db:reset",
+    "db:check": "npm --prefix main run db:check",
+    "doctor": "npm --prefix main run doctor"
+  }
+}
+

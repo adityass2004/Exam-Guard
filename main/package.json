@@ -1,0 +1,41 @@
+{
+  "name": "examguard-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "setup": "powershell -ExecutionPolicy Bypass -File ./scripts/setup.ps1",
+    "run:all": "concurrently -k -p \"[{name}]\" -n \"web,api,vision\" -c \"cyan.bold,magenta.bold,yellow.bold\" \"npm run dev:web\" \"npm run dev:api\" \"npm run dev:vision\"",
+    "dev:all": "npm run run:all",
+    "dev": "concurrently -k -p \"[{name}]\" -n \"web,api,vision\" -c \"cyan.bold,magenta.bold,yellow.bold\" \"npm run dev:web\" \"npm run dev:api\" \"npm run dev:vision\"",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:api": "npm run dev --workspace=apps/api",
+    "dev:vision": "powershell -ExecutionPolicy Bypass -Command \"if (Test-Path services/vision/.venv/Scripts/python.exe) { & services/vision/.venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --app-dir services/vision } else { python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --app-dir services/vision }\"",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test:all",
+    "test:all": "npm run test:node && npm run test:vision",
+    "test:node": "npm run test --workspaces --if-present",
+    "test:vision": "powershell -ExecutionPolicy Bypass -Command \"if (Test-Path services/vision/.venv/Scripts/pytest.exe) { & services/vision/.venv/Scripts/pytest.exe services/vision/tests -v } elseif (Get-Command pytest -ErrorAction SilentlyContinue) { pytest services/vision/tests -v } else { Write-Warning 'Python pytest not installed in active environment; skipping vision pytest' }\"",
+    "test:e2e": "powershell -ExecutionPolicy Bypass -Command \"Write-Host 'E2E Playwright test suite will be available in Prompt 09/10.'\"",
+    "db:generate": "npm run db:generate --workspace=apps/api",
+    "db:migrate": "npx prisma migrate dev --schema=apps/api/prisma/schema.prisma",
+    "db:deploy": "npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma",
+    "db:seed": "npm run db:seed --workspace=apps/api",
+    "db:check": "npm --workspace=@examguard/api run db:check",
+    "db:reset": "powershell -ExecutionPolicy Bypass -File ./scripts/db-reset.ps1",
+    "lint:mocks": "node scripts/check-no-mocks.mjs",
+    "db:studio": "npx prisma studio --schema=apps/api/prisma/schema.prisma",
+    "doctor": "powershell -ExecutionPolicy Bypass -File ./scripts/doctor.ps1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2"
+  }
+}
+

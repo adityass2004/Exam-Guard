@@ -1,0 +1,26 @@
+# Optional Docker Compose configuration for local development
+# Usage: docker compose up -d mysql
+# Native Windows setup is primary and does not require Docker if MySQL is installed locally.
+
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: examguard-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-examguard_root_password}
+      MYSQL_DATABASE: examguard
+      MYSQL_USER: examguard
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-examguard_dev_password}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    command: --default-authentication-plugin=caching_sha2_password --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci
+
+volumes:
+  mysql_data:
+

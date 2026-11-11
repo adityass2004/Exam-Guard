@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Build outputs and caches
+dist/
+build/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# Test and coverage
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# Private Storage and Models
+storage/
+services/vision/models/
+mysql-data/
+*.onnx
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Test face media fixtures (keep README.md)
+tests/fixtures/**/*.jpg
+tests/fixtures/**/*.jpeg
+tests/fixtures/**/*.png
+tests/fixtures/**/*.webp
+tests/fixtures/**/*.bmp
+tests/fixtures/**/*.mp4
+tests/fixtures/**/*.webm
+!tests/fixtures/README.md
+

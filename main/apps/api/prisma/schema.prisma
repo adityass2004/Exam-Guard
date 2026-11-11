@@ -1,0 +1,615 @@
+// ExamGuard Prisma Schema
+// Single source of truth for the MySQL database schema.
+// Follows docs/DATA_DICTIONARY.md specifications exactly.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// Enums
+// -----------------------------------------------------------------------------
+
+enum UserRole {
+  STUDENT
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum EnrollmentStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  SUPERSEDED
+  REVOKED
+}
+
+enum FaceAngle {
+  FRONT
+  LEFT
+  RIGHT
+  UP
+  DOWN
+}
+
+enum EmbeddingKind {
+  SAMPLE
+  CENTROID
+}
+
+enum ExamStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+}
+
+enum SessionStatus {
+  PENDING_VERIFICATION
+  IN_PROGRESS
+  SUBMITTED
+  EXPIRED
+  CANCELLED
+}
+
+enum VerificationPhase {
+  PRE_EXAM
+  CONTINUOUS
+}
+
+enum VerificationOutcome {
+  MATCH
+  MISMATCH
+  NO_FACE
+  MULTIPLE_FACES
+  CAMERA_ERROR
+  VERIFICATION_ERROR
+}
+
+enum TriggerType {
+  IDENTITY_MISMATCH
+  NO_FACE
+  MULTIPLE_FACES
+  CAMERA_DISCONNECTED
+  VERIFICATION_SERVICE_FAILURE
+  REPEATED_VERIFICATION_FAILURE
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  OPEN
+  ACKNOWLEDGED
+  REVIEWED
+}
+
+enum ReviewDisposition {
+  CONFIRMED_CONCERN
+  FALSE_POSITIVE
+  INCONCLUSIVE
+}
+
+enum EvidenceCaptureStatus {
+  CAPTURED
+  FAILED
+  NOT_AVAILABLE
+}
+
+enum MultipleFacesPolicy {
+  LOG_ONLY
+  ALERT_AFTER_CONSECUTIVE
+  ALERT_IMMEDIATELY
+}
+
+enum CameraFailurePolicy {
+  ALERT_AFTER_GRACE
+  ALERT_IMMEDIATELY
+}
+
+enum DeletionRequestStatus {
+  PENDING
+  FULFILLED
+  REJECTED
+}
+
+// -----------------------------------------------------------------------------
+// Models
+// -----------------------------------------------------------------------------
+
+model User {
+  id               String     @id @default(uuid()) @db.Char(36)
+  role             UserRole
+  email            String     @unique @db.VarChar(254)
+  passwordHash     String     @map("password_hash") @db.VarChar(255)
+  fullName         String     @map("full_name") @db.VarChar(120)
+  status           UserStatus @default(ACTIVE)
+  mustChangePassword Boolean  @default(false) @map("must_change_password")
+  failedLoginCount Int        @default(0) @map("failed_login_count")
+  lockedUntil      DateTime?  @map("locked_until") @db.DateTime(3)
+  lastLoginAt      DateTime?  @map("last_login_at") @db.DateTime(3)
+  createdAt        DateTime   @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime   @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt        DateTime?  @map("deleted_at") @db.DateTime(3)
+
+  // Relations
+  studentProfile          StudentProfile?
+  authSessions            AuthSession[]
+  faceProfiles            FaceProfile[]
+  approvedProfiles        FaceProfile[]           @relation("ApprovedBy")
+  createdExams            Exam[]                  @relation("CreatedBy")
+  examSessions            ExamSession[]
+  cancelledSessions       ExamSession[]           @relation("CancelledBy")
+  auditLogs               AdminAuditLog[]         @relation("Actor")
+  consentRecords          ConsentRecord[]
+  dataDeletionRequests    DataDeletionRequest[]
+  handledDeletionRequests DataDeletionRequest[]   @relation("HandledBy")
+  investigationLogs       AdminInvestigationLog[] @relation("AdminInvestigator")
+  acknowledgedIncidents   SecurityTrigger[]       @relation("AcknowledgedBy")
+  reviewedIncidents       SecurityTrigger[]       @relation("ReviewedBy")
+  createdSettings         VerificationSetting[]   @relation("SettingsCreatedBy")
+  verificationLogs        VerificationLog[]
+  securityTriggers        SecurityTrigger[]
+
+  @@index([role])
+  @@index([role, deletedAt])
+  @@map("users")
+}
+
+model AuthSession {
+  id            String    @id @default(uuid()) @db.Char(36)
+  userId        String    @map("user_id") @db.Char(36)
+  tokenHash     String    @unique @map("token_hash") @db.VarChar(64)
+  csrfTokenHash String    @map("csrf_token_hash") @db.VarChar(64)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  lastUsedAt    DateTime  @default(now()) @map("last_used_at") @db.DateTime(3)
+  expiresAt     DateTime  @map("expires_at") @db.DateTime(3)
+  revokedAt     DateTime? @map("revoked_at") @db.DateTime(3)
+  userAgent     String?   @map("user_agent") @db.VarChar(512)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+model StudentProfile {
+  id                    String            @id @default(uuid()) @db.Char(36)
+  userId                String            @unique @map("user_id") @db.Char(36)
+  studentId             String            @unique @map("student_id") @db.VarChar(32)
+  enrollmentStatusCache EnrollmentStatus? @map("enrollment_status_cache")
+  createdAt             DateTime          @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt             DateTime          @updatedAt @map("updated_at") @db.DateTime(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("student_profiles")
+}
+
+model ConsentRecord {
+  id               String   @id @default(uuid()) @db.Char(36)
+  userId           String   @map("user_id") @db.Char(36)
+  consentType      String   @map("consent_type") @db.VarChar(40)
+  policyVersion    String   @map("policy_version") @db.VarChar(20)
+  policyTextSha256 String   @map("policy_text_sha256") @db.Char(64)
+  granted          Boolean
+  createdAt        DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, consentType, createdAt])
+  @@map("consent_records")
+}
+
+model FaceProfile {
+  id                     String           @id @default(uuid()) @db.Char(36)
+  studentUserId          String           @map("student_user_id") @db.Char(36)
+  version                Int
+  status                 EnrollmentStatus
+  modelName              String           @map("model_name") @db.VarChar(64)
+  modelVersion           String           @map("model_version") @db.VarChar(32)
+  embeddingDim           Int              @map("embedding_dim")
+  qualitySummary         Json?            @map("quality_summary")
+  consistencyMinObserved Float?           @map("consistency_min_observed")
+  submittedAt            DateTime?        @map("submitted_at") @db.DateTime(3)
+  approvedAt             DateTime?        @map("approved_at") @db.DateTime(3)
+  approvedBy             String?          @map("approved_by") @db.Char(36)
+  rejectedReason         String?          @map("rejected_reason") @db.Text
+  revokedAt              DateTime?        @map("revoked_at") @db.DateTime(3)
+  createdAt              DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt              DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+
+  studentUser User                  @relation(fields: [studentUserId], references: [id], onDelete: Restrict)
+  approver    User?                 @relation("ApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
+  images      FaceEnrollmentImage[]
+  embeddings  FaceEmbedding[]
+  sessions    ExamSession[]
+
+  @@unique([studentUserId, version])
+  @@index([studentUserId, status])
+  @@map("face_profiles")
+}
+
+model FaceEnrollmentImage {
+  id            String    @id @default(uuid()) @db.Char(36)
+  faceProfileId String    @map("face_profile_id") @db.Char(36)
+  angle         FaceAngle
+  storagePath   String    @map("storage_path") @db.VarChar(255)
+  sha256        String    @db.Char(64)
+  mime          String    @db.VarChar(32)
+  byteSize      Int       @map("byte_size")
+  width         Int
+  height        Int
+  encIv         Bytes     @map("enc_iv") @db.Binary(12)
+  encTag        Bytes     @map("enc_tag") @db.Binary(16)
+  encKeyVersion Int       @map("enc_key_version") @db.SmallInt
+  quality       Json
+  capturedAt    DateTime  @map("captured_at") @db.DateTime(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+
+  faceProfile FaceProfile @relation(fields: [faceProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([faceProfileId, angle])
+  @@map("face_enrollment_images")
+}
+
+model FaceEmbedding {
+  id            String        @id @default(uuid()) @db.Char(36)
+  faceProfileId String        @map("face_profile_id") @db.Char(36)
+  kind          EmbeddingKind
+  angle         FaceAngle?
+  ciphertext    Bytes         @db.VarBinary(2500)
+  encIv         Bytes         @map("enc_iv") @db.Binary(12)
+  encTag        Bytes         @map("enc_tag") @db.Binary(16)
+  encKeyVersion Int           @map("enc_key_version") @db.SmallInt
+  dim           Int
+  modelName     String        @map("model_name") @db.VarChar(64)
+  modelVersion  String        @map("model_version") @db.VarChar(32)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+
+  faceProfile FaceProfile @relation(fields: [faceProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([faceProfileId, kind, angle])
+  @@map("face_embeddings")
+}
+
+model VerificationSetting {
+  id                            String              @id @default(uuid()) @db.Char(36)
+  version                       Int                 @unique
+  isActive                      Boolean             @map("is_active")
+  name                          String?             @db.VarChar(120)
+  thresholdPct                  Float               @map("threshold_pct")
+  intervalMs                    Int                 @map("interval_ms")
+  consecutiveMismatchLimit      Int                 @map("consecutive_mismatch_limit")
+  missingFaceLimit              Int                 @map("missing_face_limit")
+  multipleFacesPolicy           MultipleFacesPolicy @map("multiple_faces_policy")
+  multipleFacesConsecutiveLimit Int                 @map("multiple_faces_consecutive_limit")
+  cameraFailurePolicy           CameraFailurePolicy @map("camera_failure_policy")
+  cameraGraceSeconds            Int                 @map("camera_grace_seconds")
+  serviceFailureLimit           Int                 @map("service_failure_limit")
+  repeatedFailureLimit          Int                 @map("repeated_failure_limit")
+  recoveryMatchCount            Int                 @map("recovery_match_count")
+  startupGraceSeconds           Int                 @map("startup_grace_seconds")
+  preExamRequiredMatches        Int                 @map("pre_exam_required_matches")
+  minFaceQuality                Json                @map("min_face_quality")
+  severityRules                 Json                @map("severity_rules")
+  createdBy                     String              @map("created_by") @db.Char(36)
+  createdAt                     DateTime            @default(now()) @map("created_at") @db.DateTime(3)
+  changeNote                    String?             @map("change_note") @db.VarChar(255)
+
+  creator          User              @relation("SettingsCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  exams            Exam[]
+  sessions         ExamSession[]
+  verificationLogs VerificationLog[]
+
+  @@map("verification_settings")
+}
+
+model Exam {
+  id                     String     @id @default(uuid()) @db.Char(36)
+  title                  String     @db.VarChar(180)
+  description            String?    @db.Text
+  durationMinutes        Int        @map("duration_minutes")
+  status                 ExamStatus @default(DRAFT)
+  shuffleQuestions       Boolean    @default(false) @map("shuffle_questions")
+  showScoreAfterSubmit   Boolean    @default(false) @map("show_score_after_submit")
+  verificationSettingsId String?    @map("verification_settings_id") @db.Char(36)
+  createdBy              String     @map("created_by") @db.Char(36)
+  createdAt              DateTime   @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt              DateTime   @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt              DateTime?  @map("deleted_at") @db.DateTime(3)
+
+  creator              User                 @relation("CreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  verificationSettings VerificationSetting? @relation(fields: [verificationSettingsId], references: [id], onDelete: SetNull)
+  questions            ExamQuestion[]
+  sessions             ExamSession[]
+  verificationLogs     VerificationLog[]
+  securityTriggers     SecurityTrigger[]
+
+  @@index([status, deletedAt])
+  @@map("exams")
+}
+
+model ExamQuestion {
+  id        String    @id @default(uuid()) @db.Char(36)
+  examId    String    @map("exam_id") @db.Char(36)
+  position  Int
+  prompt    String    @db.Text
+  points    Int       @default(1)
+  createdAt DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt DateTime? @map("deleted_at") @db.DateTime(3)
+
+  exam    Exam                 @relation(fields: [examId], references: [id], onDelete: Cascade)
+  options ExamQuestionOption[]
+  answers ExamAnswer[]
+
+  @@index([examId, position])
+  @@map("exam_questions")
+}
+
+model ExamQuestionOption {
+  id         String  @id @default(uuid()) @db.Char(36)
+  questionId String  @map("question_id") @db.Char(36)
+  position   Int
+  label      String  @db.Text
+  isCorrect  Boolean @map("is_correct")
+
+  question ExamQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answers  ExamAnswer[]
+
+  @@unique([questionId, position])
+  @@map("exam_question_options")
+}
+
+model ExamSession {
+  id                        String               @id @default(uuid()) @db.Char(36)
+  examId                    String               @map("exam_id") @db.Char(36)
+  studentUserId             String               @map("student_user_id") @db.Char(36)
+  faceProfileId             String               @map("face_profile_id") @db.Char(36)
+  settingsVersionId         String               @map("settings_version_id") @db.Char(36)
+  settingsSnapshot          Json                 @map("settings_snapshot")
+  status                    SessionStatus        @default(PENDING_VERIFICATION)
+  activeStudentKey          String?              @unique @map("active_student_key") @db.Char(36)
+  createdAt                 DateTime             @default(now()) @map("created_at") @db.DateTime(3)
+  preVerifiedAt             DateTime?            @map("pre_verified_at") @db.DateTime(3)
+  startedAt                 DateTime?            @map("started_at") @db.DateTime(3)
+  expiresAt                 DateTime?            @map("expires_at") @db.DateTime(3)
+  submittedAt               DateTime?            @map("submitted_at") @db.DateTime(3)
+  cancelledAt               DateTime?            @map("cancelled_at") @db.DateTime(3)
+  cancelledBy               String?              @map("cancelled_by") @db.Char(36)
+  lastSeenAt                DateTime?            @map("last_seen_at") @db.DateTime(3)
+  nextSequenceNo            Int                  @default(1) @map("next_sequence_no")
+  totalAttempts             Int                  @default(0) @map("total_attempts")
+  matchCount                Int                  @default(0) @map("match_count")
+  mismatchCount             Int                  @default(0) @map("mismatch_count")
+  noFaceCount               Int                  @default(0) @map("no_face_count")
+  multiFaceCount            Int                  @default(0) @map("multi_face_count")
+  cameraErrorCount          Int                  @default(0) @map("camera_error_count")
+  verificationErrorCount    Int                  @default(0) @map("verification_error_count")
+  preExamAttempts           Int                  @default(0) @map("pre_exam_attempts")
+  preExamConsecutiveMatches Int                  @default(0) @map("pre_exam_consecutive_matches")
+  consecutiveMatch          Int                  @default(0) @map("consecutive_match")
+  consecutiveMismatch       Int                  @default(0) @map("consecutive_mismatch")
+  consecutiveNoFace         Int                  @default(0) @map("consecutive_no_face")
+  consecutiveMultiFace      Int                  @default(0) @map("consecutive_multi_face")
+  consecutiveServiceError   Int                  @default(0) @map("consecutive_service_error")
+  consecutiveNonMatch       Int                  @default(0) @map("consecutive_non_match")
+  cameraErrorSince          DateTime?            @map("camera_error_since") @db.DateTime(3)
+  lastOutcome               VerificationOutcome? @map("last_outcome")
+  lastSimilarityPct         Float?               @map("last_similarity_pct")
+  lastVerificationAt        DateTime?            @map("last_verification_at") @db.DateTime(3)
+  score                     Int?
+  maxScore                  Int?                 @map("max_score")
+
+  exam             Exam                @relation(fields: [examId], references: [id], onDelete: Restrict)
+  studentUser      User                @relation(fields: [studentUserId], references: [id], onDelete: Restrict)
+  canceller        User?               @relation("CancelledBy", fields: [cancelledBy], references: [id], onDelete: SetNull)
+  faceProfile      FaceProfile         @relation(fields: [faceProfileId], references: [id], onDelete: Restrict)
+  settings         VerificationSetting @relation(fields: [settingsVersionId], references: [id], onDelete: Restrict)
+  answers          ExamAnswer[]
+  verificationLogs VerificationLog[]
+  securityTriggers SecurityTrigger[]
+
+  @@index([status])
+  @@index([examId, status])
+  @@index([studentUserId, createdAt])
+  @@index([lastSeenAt])
+  @@map("exam_sessions")
+}
+
+model ExamAnswer {
+  id         String   @id @default(uuid()) @db.Char(36)
+  sessionId  String   @map("session_id") @db.Char(36)
+  questionId String   @map("question_id") @db.Char(36)
+  optionId   String?  @map("option_id") @db.Char(36)
+  answeredAt DateTime @default(now()) @map("answered_at") @db.DateTime(3)
+
+  session  ExamSession         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question ExamQuestion        @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  option   ExamQuestionOption? @relation(fields: [optionId], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, questionId])
+  @@map("exam_answers")
+}
+
+model VerificationLog {
+  id                BigInt              @id @default(autoincrement())
+  sessionId         String              @map("session_id") @db.Char(36)
+  studentUserId     String              @map("student_user_id") @db.Char(36)
+  examId            String              @map("exam_id") @db.Char(36)
+  sequenceNo        Int                 @map("sequence_no")
+  phase             VerificationPhase
+  outcome           VerificationOutcome
+  errorCode         String              @default("NONE") @map("error_code") @db.VarChar(40)
+  similarityRaw     Float?              @map("similarity_raw")
+  similarityPct     Float?              @map("similarity_pct")
+  thresholdPct      Float               @map("threshold_pct")
+  faceCount         Int?                @map("face_count")
+  quality           Json?
+  visionMs          Int?                @map("vision_ms")
+  processingMs      Int                 @map("processing_ms")
+  clientCapturedAt  DateTime?           @map("client_captured_at") @db.DateTime(3)
+  settingsVersionId String              @map("settings_version_id") @db.Char(36)
+  triggerId         String?             @map("trigger_id") @db.Char(36)
+  createdAt         DateTime            @default(now()) @map("created_at") @db.DateTime(3)
+
+  session         ExamSession         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentUser     User                @relation(fields: [studentUserId], references: [id], onDelete: Restrict)
+  exam            Exam                @relation(fields: [examId], references: [id], onDelete: Restrict)
+  settings        VerificationSetting @relation(fields: [settingsVersionId], references: [id], onDelete: Restrict)
+  trigger         SecurityTrigger?    @relation("TriggerLogs", fields: [triggerId], references: [id], onDelete: SetNull)
+  triggerEvidence TriggerEvidence[]
+
+  @@unique([sessionId, sequenceNo])
+  @@index([sessionId, createdAt])
+  @@index([studentUserId, createdAt])
+  @@index([examId, createdAt])
+  @@index([outcome, createdAt])
+  @@index([createdAt])
+  @@index([triggerId])
+  @@map("verification_logs")
+}
+
+model SecurityTrigger {
+  id                     String                @id @default(uuid()) @db.Char(36)
+  incidentCode           String                @unique @map("incident_code") @db.VarChar(24)
+  sessionId              String                @map("session_id") @db.Char(36)
+  studentUserId          String                @map("student_user_id") @db.Char(36)
+  examId                 String                @map("exam_id") @db.Char(36)
+  triggerType            TriggerType           @map("trigger_type")
+  severity               Severity
+  status                 IncidentStatus        @default(OPEN)
+  disposition            ReviewDisposition?
+  activeDedupeKey        String?               @unique @map("active_dedupe_key") @db.VarChar(80)
+  firstDetectedAt        DateTime              @map("first_detected_at") @db.DateTime(3)
+  lastDetectedAt         DateTime              @map("last_detected_at") @db.DateTime(3)
+  recoveredAt            DateTime?             @map("recovered_at") @db.DateTime(3)
+  occurrenceCount        Int                   @default(1) @map("occurrence_count")
+  firstSimilarityPct     Float?                @map("first_similarity_pct")
+  worstSimilarityPct     Float?                @map("worst_similarity_pct")
+  firstVerificationLogId BigInt                @map("first_verification_log_id")
+  lastVerificationLogId  BigInt                @map("last_verification_log_id")
+  evidenceStatus         EvidenceCaptureStatus @map("evidence_status")
+  evidenceFailureReason  String?               @map("evidence_failure_reason") @db.VarChar(255)
+  acknowledgedBy         String?               @map("acknowledged_by") @db.Char(36)
+  acknowledgedAt         DateTime?             @map("acknowledged_at") @db.DateTime(3)
+  reviewedBy             String?               @map("reviewed_by") @db.Char(36)
+  reviewedAt             DateTime?             @map("reviewed_at") @db.DateTime(3)
+  createdAt              DateTime              @default(now()) @map("created_at") @db.DateTime(3)
+
+  session           ExamSession             @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  studentUser       User                    @relation(fields: [studentUserId], references: [id], onDelete: Restrict)
+  exam              Exam                    @relation(fields: [examId], references: [id], onDelete: Restrict)
+  acknowledger      User?                   @relation("AcknowledgedBy", fields: [acknowledgedBy], references: [id], onDelete: SetNull)
+  reviewer          User?                   @relation("ReviewedBy", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  verificationLogs  VerificationLog[]       @relation("TriggerLogs")
+  evidence          TriggerEvidence?
+  investigationLogs AdminInvestigationLog[]
+
+  @@index([status, severity])
+  @@index([sessionId])
+  @@index([studentUserId])
+  @@index([examId])
+  @@index([triggerType, firstDetectedAt])
+  @@map("security_triggers")
+}
+
+model TriggerEvidence {
+  id                String   @id @default(uuid()) @db.Char(36)
+  triggerId         String   @unique @map("trigger_id") @db.Char(36)
+  verificationLogId BigInt   @map("verification_log_id")
+  storagePath       String   @map("storage_path") @db.VarChar(255)
+  sha256            String   @db.Char(64)
+  mime              String   @db.VarChar(32)
+  byteSize          Int      @map("byte_size")
+  width             Int
+  height            Int
+  encIv             Bytes    @map("enc_iv") @db.Binary(12)
+  encTag            Bytes    @map("enc_tag") @db.Binary(16)
+  encKeyVersion     Int      @map("enc_key_version") @db.SmallInt
+  capturedAt        DateTime @map("captured_at") @db.DateTime(3)
+  createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  trigger         SecurityTrigger @relation(fields: [triggerId], references: [id], onDelete: Cascade)
+  verificationLog VerificationLog @relation(fields: [verificationLogId], references: [id], onDelete: Restrict)
+
+  @@map("trigger_evidence")
+}
+
+model AdminInvestigationLog {
+  id          String             @id @default(uuid()) @db.Char(36)
+  triggerId   String             @map("trigger_id") @db.Char(36)
+  adminUserId String             @map("admin_user_id") @db.Char(36)
+  action      String             @db.VarChar(30)
+  note        String?            @db.Text
+  disposition ReviewDisposition?
+  createdAt   DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+
+  trigger   SecurityTrigger @relation(fields: [triggerId], references: [id], onDelete: Cascade)
+  adminUser User            @relation("AdminInvestigator", fields: [adminUserId], references: [id], onDelete: Restrict)
+
+  @@index([triggerId, createdAt])
+  @@map("admin_investigation_logs")
+}
+
+model AdminAuditLog {
+  id          BigInt   @id @default(autoincrement())
+  actorUserId String?  @map("actor_user_id") @db.Char(36)
+  actorRole   UserRole @map("actor_role")
+  action      String   @db.VarChar(60)
+  entityType  String   @map("entity_type") @db.VarChar(40)
+  entityId    String?  @map("entity_id") @db.VarChar(64)
+  before      Json?
+  after       Json?
+  requestId   String?  @map("request_id") @db.VarChar(64)
+  ipHash      String?  @map("ip_hash") @db.Char(64)
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  actor User? @relation("Actor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([action, createdAt])
+  @@index([entityType, entityId])
+  @@index([actorUserId, createdAt])
+  @@map("admin_audit_logs")
+}
+
+model SystemSetting {
+  key       String   @id @db.VarChar(80)
+  value     Json
+  updatedBy String?  @map("updated_by") @db.Char(36)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@map("system_settings")
+}
+
+model DataDeletionRequest {
+  id            String                @id @default(uuid()) @db.Char(36)
+  studentUserId String                @map("student_user_id") @db.Char(36)
+  status        DeletionRequestStatus @default(PENDING)
+  reason        String?               @db.Text
+  requestedAt   DateTime              @default(now()) @map("requested_at") @db.DateTime(3)
+  handledBy     String?               @map("handled_by") @db.Char(36)
+  handledAt     DateTime?             @map("handled_at") @db.DateTime(3)
+  handlerNote   String?               @db.Text
+
+  studentUser User  @relation(fields: [studentUserId], references: [id], onDelete: Restrict)
+  handler     User? @relation("HandledBy", fields: [handledBy], references: [id], onDelete: SetNull)
+
+  @@index([studentUserId, status])
+  @@map("data_deletion_requests")
+}
