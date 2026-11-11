@@ -70,6 +70,7 @@ export interface VisionFaceDetection {
   pitch: number | null;
   roll: number | null;
   poseSource: string | null;
+  kps?: [number, number][];
 }
 
 export interface VisionQualityMetrics {
@@ -88,6 +89,8 @@ export interface VisionQualityResponse {
   quality: VisionQualityMetrics;
   reasons: string[];
   ms: number;
+  frameWidth?: number;
+  frameHeight?: number;
 }
 
 export interface VisionEmbedResponse extends VisionQualityResponse {

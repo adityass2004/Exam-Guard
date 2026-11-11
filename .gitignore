@@ -70,3 +70,4 @@ tests/fixtures/**/*.bmp
 tests/fixtures/**/*.mp4
 tests/fixtures/**/*.webm
 !tests/fixtures/README.md
+detail.md

@@ -295,6 +295,7 @@ export function useWebcam() {
   return useMemo(
     () => ({
       videoRef,
+      streamRef,
       status,
       error,
       isReady: status === 'ready',

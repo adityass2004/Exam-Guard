@@ -51,6 +51,7 @@ class FaceDetection(BaseModel):
     pitch: Optional[float] = None
     roll: Optional[float] = None
     poseSource: Optional[str] = None
+    kps: Optional[List[List[float]]] = None  # Exactly 5 SCRFD facial keypoints [[x, y], ...]
 
 
 class QualityMetrics(BaseModel):
@@ -69,6 +70,8 @@ class QualityResponse(BaseModel):
     quality: QualityMetrics
     reasons: List[str]
     ms: float
+    frameWidth: Optional[int] = None
+    frameHeight: Optional[int] = None
 
 
 class EmbedResponse(BaseModel):

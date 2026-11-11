@@ -46,10 +46,13 @@ async def check_quality(
         total_duration_ms = round((time.perf_counter() - t_start) * 1000.0, 2)
         metrics.record_latency(total_duration_ms)
 
+        h, w = bgr_img.shape[:2]
         return QualityResponse(
             faceCount=len(faces_json),
             faces=faces_json,
             quality=quality_metrics,
             reasons=reasons,
             ms=total_duration_ms,
+            frameWidth=w,
+            frameHeight=h,
         )

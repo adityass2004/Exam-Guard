@@ -8,6 +8,27 @@ import {
 } from '../enrollment/centroid.js';
 import { sandboxDb, SandboxFace, SandboxVerificationLog } from './sandbox.db.js';
 
+export interface ScrfdDetectionFace {
+  bbox: [number, number, number, number];
+  confidence: number;
+  keypoints: [number, number][];
+  yaw?: number | null;
+  pitch?: number | null;
+  roll?: number | null;
+}
+
+export interface ScrfdDetectionResponse {
+  success: boolean;
+  frame_id: string;
+  frame_width: number;
+  frame_height: number;
+  face_count: number;
+  inference_time_ms: number;
+  status: 'NO_FACE' | 'SINGLE_FACE' | 'MULTIPLE_FACES';
+  message: string;
+  faces: ScrfdDetectionFace[];
+}
+
 export class SandboxService {
   private visionClient: IVisionClient;
 
@@ -246,6 +267,90 @@ export class SandboxService {
       quality: qualityRes.quality,
       latencyMs: qualityRes.ms,
       timestamp: new Date().toISOString(),
+    };
+  }
+
+  async checkQuality(imageBuffer: Buffer, angle?: string) {
+    const qualityRes = await this.visionClient.quality(imageBuffer, angle);
+
+    let outcome: 'READY' | 'NO_FACE' | 'MULTIPLE_FACES' | 'IMAGE_UNCLEAR';
+    let message: string;
+    const hints: string[] = [];
+
+    if (qualityRes.faceCount === 0) {
+      outcome = 'NO_FACE';
+      message = 'No face detected in camera view';
+      hints.push('Position your face inside the guide frame in good lighting.');
+    } else if (qualityRes.faceCount > 1) {
+      outcome = 'MULTIPLE_FACES';
+      message = `Multiple faces detected (${qualityRes.faceCount})`;
+      hints.push('Ensure only one person is in the camera view.');
+    } else if (
+      qualityRes.quality?.blur != null &&
+      qualityRes.quality.blur > 0 &&
+      qualityRes.quality.blur < 70
+    ) {
+      outcome = 'IMAGE_UNCLEAR';
+      message = 'Image is blurry — hold still';
+      hints.push('Hold still to allow your camera to focus.');
+    } else if (qualityRes.quality?.brightness != null && qualityRes.quality.brightness < 40) {
+      outcome = 'IMAGE_UNCLEAR';
+      message = 'Lighting is too dark';
+      hints.push('Increase room lighting or face a light source.');
+    } else {
+      outcome = 'READY';
+      message = 'Face detected & aligned! Ready to capture.';
+    }
+
+    return {
+      acceptable: outcome === 'READY',
+      outcome,
+      message,
+      hints,
+      faceCount: qualityRes.faceCount,
+      faces: qualityRes.faces,
+      quality: qualityRes.quality,
+      latencyMs: qualityRes.ms,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  async detectScrfd(imageBuffer: Buffer, frameId?: string): Promise<ScrfdDetectionResponse> {
+    const qualityRes = await this.visionClient.quality(imageBuffer);
+
+    let status: 'NO_FACE' | 'SINGLE_FACE' | 'MULTIPLE_FACES';
+    let message: string;
+
+    if (qualityRes.faceCount === 0) {
+      status = 'NO_FACE';
+      message = 'No face detected. Please position your face in front of the camera.';
+    } else if (qualityRes.faceCount === 1) {
+      status = 'SINGLE_FACE';
+      message = 'Face detection successful. Ready for verification.';
+    } else {
+      status = 'MULTIPLE_FACES';
+      message = `Multiple faces detected (${qualityRes.faceCount}). Only one candidate is permitted.`;
+    }
+
+    const faces: ScrfdDetectionFace[] = qualityRes.faces.map((f) => ({
+      bbox: f.box,
+      confidence: f.detScore,
+      keypoints: f.kps || [],
+      yaw: f.yaw,
+      pitch: f.pitch,
+      roll: f.roll,
+    }));
+
+    return {
+      success: true,
+      frame_id: frameId || `frame_${Date.now()}`,
+      frame_width: qualityRes.frameWidth ?? 640,
+      frame_height: qualityRes.frameHeight ?? 480,
+      face_count: qualityRes.faceCount,
+      inference_time_ms: qualityRes.ms,
+      status,
+      message,
+      faces,
     };
   }
 

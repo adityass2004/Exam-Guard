@@ -38,6 +38,11 @@ def detect_and_measure(
         det_score = round(float(face.det_score), 4)
         yaw, pitch, roll, pose_src = extract_pose_from_face(face)
 
+        # Extract real 5 SCRFD keypoints: [left_eye, right_eye, nose, left_mouth, right_mouth]
+        kps_list = None
+        if hasattr(face, "kps") and face.kps is not None:
+            kps_list = [[round(float(pt[0]), 1), round(float(pt[1]), 1)] for pt in face.kps]
+
         faces_json.append({
             "box": bbox,
             "detScore": det_score,
@@ -45,6 +50,7 @@ def detect_and_measure(
             "pitch": pitch,
             "roll": roll,
             "poseSource": pose_src,
+            "kps": kps_list,
         })
 
     face_count = len(faces_json)

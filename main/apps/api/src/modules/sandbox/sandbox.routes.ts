@@ -77,6 +77,48 @@ sandboxRouter.post(
   }
 );
 
+// POST /api/v1/sandbox/preview-check - Real-time enrollment guidance & quality check
+sandboxRouter.post(
+  '/preview-check',
+  upload.any(),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const files = (req.files as Express.Multer.File[]) || (req.file ? [req.file] : []);
+      const file = files[0];
+      if (!file || !file.buffer) {
+        throw new AppError('BAD_REQUEST', 400, 'Image frame is required for preview check');
+      }
+
+      const angle = req.body?.angle ? String(req.body.angle) : undefined;
+      const result = await sandboxService.checkQuality(file.buffer, angle);
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// POST /api/v1/sandbox/scrfd-detect - Real-Time SCRFD Face Detection Visualization
+sandboxRouter.post(
+  '/scrfd-detect',
+  upload.any(),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const files = (req.files as Express.Multer.File[]) || (req.file ? [req.file] : []);
+      const file = files[0];
+      if (!file || !file.buffer) {
+        throw new AppError('BAD_REQUEST', 400, 'Image frame is required for SCRFD face detection');
+      }
+
+      const frameId = req.body?.frameId ? String(req.body.frameId) : undefined;
+      const result = await sandboxService.detectScrfd(file.buffer, frameId);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // GET /api/v1/sandbox/logs - Get recent verification logs
 sandboxRouter.get('/logs', (_req: Request, res: Response, next: NextFunction) => {
   try {
